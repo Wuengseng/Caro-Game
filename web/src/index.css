@@ -1,1 +1,25 @@
 @import "tailwindcss";
+
+@theme {
+  --color-primary: #0070d1;
+  --color-primary-pressed: #0064b7;
+  --color-primary-active: #004d8d;
+  --color-on-primary: #ffffff;
+  --color-ink: #000000;
+  --color-ink-deep: #121314;
+  --color-ink-elevated: #181818;
+  --color-charcoal: #1f2024;
+  --color-canvas-light: #ffffff;
+  --color-surface-soft: #f3f3f3;
+  --color-surface-card: #f5f7fa;
+  --color-hairline-light: #f3f3f3;
+  
+  --font-family-sans: 'PlayStation SST', ui-sans-serif, system-ui, sans-serif;
+}
+
+body {
+  background-color: var(--color-canvas-light);
+  color: var(--color-ink);
+  font-family: var(--font-family-sans);
+  font-weight: 300;
+}
