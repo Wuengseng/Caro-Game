@@ -17,6 +17,12 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # =========================================================
 
 class ResidualBlock(nn.Module):
+    """
+    Khối thặng dư (Residual Block):
+    Lõi của mạng, giúp AI 'nhìn' ra các mẫu hình cờ (ví dụ: cờ bí, cờ mở, nước đôi).
+    Sử dụng Skip Connection (x = x + residual) để tránh hiện tượng quên kiến thức
+    khi mạng học quá sâu (Vanishing Gradient).
+    """
     def __init__(self, channels):
         super().__init__()
         self.conv1 = nn.Conv2d(
@@ -37,13 +43,25 @@ class ResidualBlock(nn.Module):
         self.bn2 = nn.BatchNorm2d(channels)
 
     def forward(self, x):
+        # 1. Lưu lại bản gốc của dữ liệu (Skip Connection)
+        # Giống như việc ghi nhớ 'kiến thức nền' trước khi học kiến thức mới
         residual = x
+        
+        # 2. Xử lý qua lớp bộ lọc thứ nhất (conv1)
         x = self.conv1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
+        x = self.bn1(x)        # Chuẩn hóa dữ liệu
+        x = F.relu(x)          # Lọc bỏ số âm (chỉ giữ lại tín hiệu tích cực)
+        
+        # 3. Xử lý qua lớp bộ lọc thứ hai (conv2)
         x = self.conv2(x)
         x = self.bn2(x)
+        
+        # 4. TRỌNG TÂM: Cộng gộp kiến thức cũ và mới (Residual Addition)
+        # AI không vứt bỏ dữ liệu gốc đi, mà lấy cái mới phân tích được (+) cộng chồng lên cái cũ.
+        # Nhờ vậy, AI có tư duy sâu đến mấy cũng không bị 'mất gốc' (Vanishing Gradient)
         x = x + residual
+        
+        # 5. Kích hoạt bước cuối
         x = F.relu(x)
         return x
 
@@ -51,21 +69,33 @@ class ResidualBlock(nn.Module):
 # NETWORK
 # =========================================================
 
-class AlphaZeroNet(nn.Module):
+class ImitationNet(nn.Module):
+    """
+    Mạng Neural học bắt chước (Imitation Learning).
+    Mục tiêu: Nhìn vào bàn cờ (đầu vào) và chỉ ra nước đi tốt nhất y hệt như AI chuyên gia.
+    """
     def __init__(self):
         super().__init__()
-        channels = 128
+        channels = 256 # Số kênh (bộ lọc) để quét bàn cờ
 
+        # 1. KHỐI ĐẦU VÀO (Input Block): Giống như 'võng mạc' của mắt
+        # Nhận ma trận 4 lớp (channels) của bàn cờ và phân tích các đặc điểm thô ban đầu
         self.input_conv = nn.Conv2d(
             INPUT_CHANNELS,
             channels,
-            kernel_size=3,
-            padding=1,
+            kernel_size=3, # Quét từng vùng 3x3 ô cờ
+            padding=1,     # Giữ nguyên kích thước bàn cờ
             bias=False
         )
-        self.input_bn = nn.BatchNorm2d(channels)
+        self.input_bn = nn.BatchNorm2d(channels) # Chuẩn hóa để mạng học nhanh hơn
 
+        # 2. KHỐI TƯ DUY (Body - Residual Blocks): Giống như 'não bộ'
+        # 6 khối nối tiếp nhau giúp AI hiểu được các thế trận phức tạp từ đơn giản
         self.res_blocks = nn.Sequential(
+            ResidualBlock(channels),
+            ResidualBlock(channels),
+            ResidualBlock(channels),
+            ResidualBlock(channels),
             ResidualBlock(channels),
             ResidualBlock(channels),
             ResidualBlock(channels),
@@ -74,7 +104,9 @@ class AlphaZeroNet(nn.Module):
             ResidualBlock(channels)
         )
 
-        # POLICY HEAD
+        # 3. KHỐI ĐẦU RA (Policy Head): 'Người ra quyết định'
+        # Nén kết quả tư duy từ 128 kênh xuống còn 2 kênh, sau đó dũi phẳng ra (flatten)
+        # để biến thành 225 điểm số tương ứng với 225 ô (15x15) trên bàn cờ.
         self.policy_conv = nn.Conv2d(
             channels,
             2,
@@ -83,25 +115,8 @@ class AlphaZeroNet(nn.Module):
         )
         self.policy_bn = nn.BatchNorm2d(2)
         self.policy_fc = nn.Linear(
-            2 * BOARD_SIZE * BOARD_SIZE,
-            BOARD_SIZE * BOARD_SIZE
-        )
-
-        # VALUE HEAD
-        self.value_conv = nn.Conv2d(
-            channels,
-            1,
-            kernel_size=1,
-            bias=False
-        )
-        self.value_bn = nn.BatchNorm2d(1)
-        self.value_fc1 = nn.Linear(
-            BOARD_SIZE * BOARD_SIZE,
-            256
-        )
-        self.value_fc2 = nn.Linear(
-            256,
-            1
+            2 * BOARD_SIZE * BOARD_SIZE, # 2 kênh * 15 * 15
+            BOARD_SIZE * BOARD_SIZE      # Đầu ra: 225 giá trị (xác suất đi vào ô)
         )
 
     def forward(self, x):
@@ -118,23 +133,20 @@ class AlphaZeroNet(nn.Module):
         p = p.view(p.size(0), -1)
         p = self.policy_fc(p)
 
-        # VALUE
-        v = self.value_conv(x)
-        v = self.value_bn(v)
-        v = F.relu(v)
-        v = v.view(v.size(0), -1)
-        v = self.value_fc1(v)
-        v = F.relu(v)
-        v = self.value_fc2(v)
-        v = torch.tanh(v)
-
-        return p, v.squeeze(1)
+        return p
 
 # =========================================================
-# ENCODE BOARD
+# ENCODE BOARD: Chuyển đổi bàn cờ thành đầu vào cho mạng Neural
 # =========================================================
 
 def encode_board(grid, current_player):
+    """
+    AI không nhìn bàn cờ như con người. Ta phải tách bàn cờ thành 4 'bản đồ' (planes):
+    1. Bản đồ quân ta (player_plane): Ô nào có quân ta thì bằng 1, còn lại 0.
+    2. Bản đồ quân địch (opponent_plane): Ô nào có quân địch thì bằng 1, còn lại 0.
+    3. Bản đồ lượt đi (turn_plane): Toàn số 1 hoặc 0 để AI biết màu quân mình đang cầm.
+    4. Bản đồ ô trống (legal_plane): Ô nào trống thì bằng 1 (cho AI biết các nước hợp lệ).
+    """
     player_plane = (grid == current_player).astype(np.float32)
     opponent_plane = (grid == (3 - current_player)).astype(np.float32)
     turn_plane = np.full(
@@ -156,7 +168,7 @@ def encode_board(grid, current_player):
 # =========================================================
 
 class AIHard:
-    def __init__(self, player, opponent=None, time_limit=3.0, model_path="alphazero_gomoku_best.pth"):
+    def __init__(self, player, opponent=None, time_limit=3.0, model_path="alphazero_gomoku_imitation.pth"):
         """
         Khởi tạo AI
         :param player: Người chơi của AI (vd: 1 hoặc 2)
@@ -168,14 +180,23 @@ class AIHard:
         self.opponent = opponent if opponent is not None else (3 - player)
         self.time_limit = time_limit
         
-        self.model = AlphaZeroNet().to(DEVICE)
+        self.model = ImitationNet().to(DEVICE)
         
-        # Tìm đường dẫn tuyệt đối cho model nếu cần
+        # Thử tìm file imitation trước, nếu không có thì dùng file best cũ
+        dir_path = os.path.dirname(os.path.abspath(__file__))
+        
         if not os.path.exists(model_path):
-            dir_path = os.path.dirname(os.path.abspath(__file__))
-            local_path = os.path.join(dir_path, "alphazero_gomoku_best.pth")
-            if os.path.exists(local_path):
-                model_path = local_path
+            paths_to_check = [
+                os.path.join(dir_path, "models", "alphazero_gomoku_imitation.pth"),
+                os.path.join(dir_path, "models", "alphazero_gomoku_best.pth"),
+                os.path.join(dir_path, "models", "alphazero_gomoku_best (1).pth"),
+                os.path.join(dir_path, "alphazero_gomoku_imitation.pth"),
+                os.path.join(dir_path, "alphazero_gomoku_best.pth")
+            ]
+            for p in paths_to_check:
+                if os.path.exists(p):
+                    model_path = p
+                    break
 
         # Tải mô hình
         if os.path.exists(model_path):
@@ -209,7 +230,7 @@ class AIHard:
         ).unsqueeze(0).to(DEVICE)
 
         with torch.inference_mode():
-            policy_logits, _ = self.model(state)
+            policy_logits = self.model(state)
 
         policy_logits = policy_logits[0]
 
