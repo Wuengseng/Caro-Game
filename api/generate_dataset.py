@@ -23,7 +23,7 @@ def random_opening(board):
     Đi ngẫu nhiên 3-5 nước đầu tiên xung quanh tâm (bán kính <= 2).
     Điều này ép AI gặp nhiều thế cờ khởi đầu đa dạng.
     """
-    num_moves = random.randint(3, 5)
+    num_moves = random.randint(3, 6)
     current_player = 1
     center = BOARD_SIZE // 2
     
