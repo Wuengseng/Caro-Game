@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: caro-web-deployment
+
+spec:
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: caro-web
+
+  template:
+    metadata:
+      labels:
+        app: caro-web
+
+    spec:
+      containers:
+        - name: caro-web
+          image: caro-game-web:v2
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 80
+
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

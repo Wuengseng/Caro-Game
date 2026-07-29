@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: caro-api-deployment
+
+spec:
+  template:
+    spec:
+      containers:
+        - name: caro-api
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: "2"
+              memory: 3Gi

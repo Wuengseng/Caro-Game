@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: caro-api-service
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: caro-api
+
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

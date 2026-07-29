@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: caro-api-deployment
+
+spec:
+
+  selector:
+    matchLabels:
+      app: caro-api
+
+  template:
+    metadata:
+      labels:
+        app: caro-api
+
+    spec:
+      containers:
+        - name: caro-api
+          image: caro-game-api:latest
+          imagePullPolicy: Never
+
+          envFrom:
+            - configMapRef:
+                name: caro-app-config
+            
+          ports:
+            - name: http
+              containerPort: 8000
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10

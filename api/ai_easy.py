@@ -52,24 +52,26 @@ class AIEasy:
 
     def pattern_score(self, consecutive, open_ends):
         if consecutive >= 5:
-            return 1000000
-            
+            return 10000000
+
         if consecutive == 4:
             if open_ends == 2:
-                return 120000
+                return 1000000
             if open_ends == 1:
-                return 15000
-                
+                return 100000
+
         if consecutive == 3:
             if open_ends == 2:
-                return 8000
+                return 50000
             if open_ends == 1:
-                return 1000
-                
+                return 5000
+
         if consecutive == 2:
             if open_ends == 2:
+                return 3000
+            if open_ends == 1:
                 return 300
-                
+
         return 0
 
     # ================= MOVE GENERATION =================

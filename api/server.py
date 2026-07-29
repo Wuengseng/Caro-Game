@@ -41,3 +41,6 @@ def get_move(req: MoveRequest):
     if ai_move:
         return {"r": int(ai_move[0]), "c": int(ai_move[1])}
     return {"r": -1, "c": -1}
+@app.get("/health")
+def health():
+    return {"status": "ok"}

@@ -29,7 +29,7 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy DUY NHẤT thư mục "dist" (thành quả build từ Stage 1) sang Nginx
 # Việc này làm cho dung lượng Image cuối cùng giảm từ hàng GB xuống chỉ còn vài chục MB
 COPY --from=builder /app/dist /usr/share/nginx/html
-
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 # Mở cổng 80 (cổng web tiêu chuẩn)
 EXPOSE 80
 

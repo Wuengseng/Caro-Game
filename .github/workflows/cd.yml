@@ -1,12 +1,69 @@
-name: CD (Push to Docker Hub)
+name: CD (GitOps Image Updater & PR)
 
 on:
   push:
     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
-  push:
+  # 1. Phát hiện thay đổi trong folder api/ và web/
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      has_changes: ${{ steps.set-matrix.outputs.has_changes }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check changed files
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            api:
+              - 'api/**'
+            web:
+              - 'web/**'
+
+      - name: Set dynamic matrix
+        id: set-matrix
+        run: |
+          COMPONENTS=()
+          # Nếu chạy thủ công workflow_dispatch thì build cả 2
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            COMPONENTS=("api" "web")
+          else
+            if [ "${{ steps.filter.outputs.api }}" == "true" ]; then
+              COMPONENTS+=("api")
+            fi
+            if [ "${{ steps.filter.outputs.web }}" == "true" ]; then
+              COMPONENTS+=("web")
+            fi
+          fi
+
+          if [ ${#COMPONENTS[@]} -eq 0 ]; then
+            echo "No changes detected in api/ or web/. Skipping build."
+            echo "matrix=[]" >> $GITHUB_OUTPUT
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            JSON=$(printf '%s\n' "${COMPONENTS[@]}" | jq -R . | jq -s -c .)
+            echo "Building components: $JSON"
+            echo "matrix=${JSON}" >> $GITHUB_OUTPUT
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+
+  # 2. Build & Push song song nhờ Dynamic Matrix
+  build-push:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -17,16 +74,65 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push API Image
+      - name: Build and Push ${{ matrix.component }} Image
         uses: docker/build-push-action@v5
         with:
-          context: ./api
+          context: ./${{ matrix.component }}
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/caro-api:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/caro-${{ matrix.component }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/caro-${{ matrix.component }}:${{ github.sha }}
 
-      - name: Build and Push Web Image
-        uses: docker/build-push-action@v5
+  # 3. Cập nhật Kustomize Image Tag & Tạo Pull Request cho GitOps
+  update-gitops-pr:
+    needs: [detect-changes, build-push]
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update Kustomize Image Tags
+        run: |
+          COMPONENTS=$(echo '${{ needs.detect-changes.outputs.matrix }}' | jq -r '.[]')
+          
+          for comp in $COMPONENTS; do
+            echo "👉 Cập nhật image tag cho caro-${comp} sang ${{ github.sha }}..."
+            
+            # Cập nhật môi trường Prod
+            cd k8s/apps/overlays/prod
+            kustomize edit set image wuengsengg/caro-${comp}=${{ secrets.DOCKERHUB_USERNAME }}/caro-${comp}:${{ github.sha }}
+            cd ../../../..
+            
+            # Cập nhật môi trường Dev
+            cd k8s/apps/overlays/dev
+            kustomize edit set image wuengsengg/caro-${comp}=${{ secrets.DOCKERHUB_USERNAME }}/caro-${comp}:${{ github.sha }}
+            cd ../../../..
+          done
+
+      - name: Create GitOps Pull Request
+        uses: peter-evans/create-pull-request@v6
         with:
-          context: ./web
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/caro-web:latest
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore(gitops): update docker image tags to ${{ github.sha }}"
+          branch: "gitops/update-images-${{ github.sha }}"
+          title: "🚀 [GitOps] Cập nhật Docker Image tag theo commit ${{ github.sha }}"
+          body: |
+            ### 🤖 GitOps Automated Image Updater
+            
+            Workflow CD đã tự động build và push thành công các Docker Image mới lên Docker Hub, đồng thời cập nhật Kustomization cho cả 2 môi trường **Dev** và **Prod**.
+            
+            **📦 Các component được cập nhật:**
+            `${{ needs.detect-changes.outputs.matrix }}`
+            
+            **🏷️ Image Tag mới:**
+            `${{ github.sha }}`
+            
+            ---
+            *💡 Sau khi bạn merge PR này vào nhánh `main`, **ArgoCD** sẽ phát hiện thay đổi và tự động đồng bộ (sync) Pods sang phiên bản mới.*
+          labels: |
+            gitops
+            automated

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: caro-web-service
+
+spec:
+  type: ClusterIP
+
+  selector:
+    app: caro-web
+
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

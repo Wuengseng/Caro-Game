@@ -6,7 +6,7 @@ export const getAIMove = async (
   ai_player: number,
   player: number
 ) => {
-  const response = await fetch('http://127.0.0.1:8000/move', {
+    const response = await fetch('/api/move', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ grid, difficulty, ai_player, player })
